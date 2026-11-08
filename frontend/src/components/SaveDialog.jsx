@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '../lib/store';
 import { X, Save, Tag } from 'lucide-react';
+import { makeThumbnail, nextFrame } from '../lib/exportPNG';
 
 export default function SaveDialog({ open, onClose }) {
   const s = useStore();
@@ -12,7 +13,7 @@ export default function SaveDialog({ open, onClose }) {
   useEffect(() => {
     if (open) {
       setTitle(s.currentBoardTitle || '');
-      setCategory('Custom');
+      setCategory(s.boards.find((b) => b.id === s.currentBoardId)?.category || 'Custom');
       setError(null);
     }
   }, [open]);
@@ -24,7 +25,10 @@ export default function SaveDialog({ open, onClose }) {
     if (s.elements.length === 0) { setError('Canvas is empty — nothing to save'); return; }
     setSaving(true);
     setError(null);
-    const result = await s.saveBoard(title.trim(), category);
+    s.selectElement(null); // keep selection handles out of the preview image
+    await nextFrame();
+    const thumbnail = await makeThumbnail(useStore.getState().elements);
+    const result = await s.saveBoard(title.trim(), category, thumbnail);
     setSaving(false);
     if (result.error) {
       setError('Failed to save: ' + result.error.message);

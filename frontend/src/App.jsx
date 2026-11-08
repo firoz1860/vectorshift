@@ -5,7 +5,7 @@ import BoardPanel from './components/BoardPanel';
 import TemplatesModal from './components/TemplatesModal';
 import SaveDialog from './components/SaveDialog';
 import { useStore } from './lib/store';
-import { exportPNG } from './lib/exportPNG';
+import { exportPNG, nextFrame } from './lib/exportPNG';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 function App() {
@@ -25,7 +25,11 @@ function App() {
     }
   };
 
-  const handleExport = () => exportPNG(s.elements);
+  const handleExport = async () => {
+    s.selectElement(null); // keep selection handles out of the exported image
+    await nextFrame();
+    await exportPNG(useStore.getState().elements);
+  };
 
   useEffect(() => {
     const handler = (e) => {

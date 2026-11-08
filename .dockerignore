@@ -1,8 +1,13 @@
 .git
+.vscode
+.idea
+*.zip
 **/node_modules
+**/dist
 **/.venv
 **/venv
 **/__pycache__
 **/.pytest_cache
 **/.env
 **/.env.*
+!**/.env.example

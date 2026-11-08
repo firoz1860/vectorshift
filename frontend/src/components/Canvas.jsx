@@ -225,19 +225,27 @@ export default function Canvas() {
     }
   };
 
-  const handleWheel = (e) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(0.25, Math.min(4, s.zoom * delta));
-    const rect = svgRef.current.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    s.setPan({
-      x: mx - ((mx - s.pan.x) / s.zoom) * newZoom,
-      y: my - ((my - s.pan.y) / s.zoom) * newZoom,
-    });
-    s.setZoom(newZoom);
-  };
+  // Native listener with { passive: false }: React's onWheel is passive, so
+  // preventDefault() there is ignored and the page scrolls while zooming.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return undefined;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const { zoom, pan, setPan, setZoom } = useStore.getState();
+      const newZoom = Math.max(0.25, Math.min(4, zoom * (e.deltaY > 0 ? 0.9 : 1.1)));
+      const rect = svg.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      setPan({
+        x: mx - ((mx - pan.x) / zoom) * newZoom,
+        y: my - ((my - pan.y) / zoom) * newZoom,
+      });
+      setZoom(newZoom);
+    };
+    svg.addEventListener('wheel', onWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', onWheel);
+  }, []);
 
   const handleKeyDown = useCallback((e) => {
     if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') return;
@@ -437,7 +445,6 @@ export default function Canvas() {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
-        onWheel={handleWheel}
         style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }}
       >
         <defs>

@@ -195,12 +195,12 @@ export const useStore = create((set, get) => ({
     set({ boards: data || [], loadingBoards: false });
   },
 
-  saveBoard: async (title, category = 'Custom') => {
+  saveBoard: async (title, category = 'Custom', thumbnail = null) => {
     if (!supabaseConfigured || !supabase) {
       return { error: new Error('Board saving is not configured for this deployment.') };
     }
     const { elements, currentBoardId } = get();
-    const payload = { title, category, canvas_data: { elements } };
+    const payload = { title, category, canvas_data: { elements }, ...(thumbnail ? { thumbnail } : {}) };
 
     if (currentBoardId) {
       const { data, error } = await supabase
