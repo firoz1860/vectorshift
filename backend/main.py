@@ -1,17 +1,20 @@
+
+from pathlib import Path
+from collections import defaultdict, deque
+from typing import List, Dict, Any
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import List, Dict, Any
-from collections import defaultdict, deque
 
 app = FastAPI(title="VectorShift Pipeline API")
 
+# Allow the Vite development server.
+# Production frontend and backend share the same origin.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://vectorshift-frontend-one.vercel.app/",
-    ],
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,6 +40,7 @@ def is_dag(nodes: List[Dict], edges: List[Dict]) -> bool:
 
     queue = deque([n for n in node_ids if in_degree[n] == 0])
     visited = 0
+
     while queue:
         node = queue.popleft()
         visited += 1
@@ -48,8 +52,8 @@ def is_dag(nodes: List[Dict], edges: List[Dict]) -> bool:
     return visited == len(node_ids)
 
 
-@app.get("/")
-def read_root():
+@app.get("/health")
+def health():
     return {"Ping": "Pong"}
 
 
@@ -58,5 +62,17 @@ def parse_pipeline(pipeline: PipelineData):
     return {
         "num_nodes": len(pipeline.nodes),
         "num_edges": len(pipeline.edges),
-        "is_dag":    is_dag(pipeline.nodes, pipeline.edges),
+        "is_dag": is_dag(pipeline.nodes, pipeline.edges),
     }
+
+
+# Serve the production React frontend.
+frontend_dist = (
+    Path(__file__).resolve().parent.parent / "frontend" / "dist"
+)
+
+app.mount(
+    "/",
+    StaticFiles(directory=str(frontend_dist), html=True),
+    name="frontend",
+)
