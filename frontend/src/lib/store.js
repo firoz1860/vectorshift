@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import { supabase, supabaseConfigured } from './supabase';
-import { createShape, createPath, createConnection, SHAPE_DEFAULTS } from './shapes';
+import { createShape, createPath, createConnection, SHAPE_DEFAULTS, LABELED_TYPES } from './shapes';
 
 const MAX_HISTORY = 50;
 
@@ -15,7 +15,8 @@ export const useStore = create((set, get) => ({
   fillColor: '#ffffff',
   strokeWidth: 2,
   fontSize: 16,
-  arrowDirection: 'free',
+  arrowSnap: false,
+  arrowBidirectional: false,
 
   pan: { x: 0, y: 0 },
   zoom: 1,
@@ -73,28 +74,11 @@ export const useStore = create((set, get) => ({
   setFillColor: (c) => set({ fillColor: c }),
   setStrokeWidth: (w) => set({ strokeWidth: w }),
   setFontSize: (s) => set({ fontSize: s }),
-  setArrowDirection: (d) => set({ arrowDirection: d }),
+  setArrowSnap: (on) => set({ arrowSnap: on }),
+  setArrowBidirectional: (on) => set({ arrowBidirectional: on }),
 
-  addShapeAt: (type, x, y) => {
-    const el = createShape(type, x, y, {
-      stroke: get().strokeColor,
-      fill: get().fillColor,
-      fontSize: get().fontSize,
-      ...(type === 'arrow' ? { direction: get().arrowDirection } : {}),
-    });
-    set((s) => ({ elements: [...s.elements, el], selectedId: el.id, boardModified: true }));
-    get().pushHistory();
-    return el;
-  },
   startShape: (type, x, y) => {
     const isArrow = type === 'arrow';
-    let arrowDir;
-    if (isArrow) {
-      const sel = get().arrowDirection;
-      if (sel === 'free') arrowDir = 'free';
-      else if (sel === 'bidirectional') arrowDir = 'free-bi';
-      else arrowDir = sel;
-    }
     const el = createShape(type, x, y, {
       stroke: get().strokeColor,
       fill: get().fillColor,
@@ -102,7 +86,7 @@ export const useStore = create((set, get) => ({
       w: 0,
       h: 0,
       label: '',
-      ...(isArrow ? { direction: arrowDir } : {}),
+      ...(isArrow ? { direction: get().arrowBidirectional ? 'free-bi' : 'free' } : {}),
     });
     set((s) => ({ elements: [...s.elements, el], selectedId: el.id, boardModified: true }));
     return el;
@@ -121,21 +105,19 @@ export const useStore = create((set, get) => ({
   finishShape: (id) => {
     const el = get().elements.find((e) => e.id === id);
     if (!el) return;
-    const defs = SHAPE_DEFAULTS[el.type] || {};
-    let label = el.label;
-    if (!label) label = defs.label || '';
     if (el.type === 'arrow' && Math.abs(el.w) < 5 && Math.abs(el.h) < 5) {
       get().deleteElement(id);
       return;
     }
-    if (Math.abs(el.w) < 5 && Math.abs(el.h) < 5) {
-      get().updateElement(id, { w: defs.w || 120, h: defs.h || 80, label });
-      get().pushHistory();
-      return;
+    const defs = SHAPE_DEFAULTS[el.type] || {};
+    const patch = {};
+    if (el.type !== 'arrow' && Math.abs(el.w) < 5 && Math.abs(el.h) < 5) {
+      patch.w = defs.w || 120;
+      patch.h = defs.h || 80;
     }
-    if (el.type === 'text' || el.type === 'sticky') {
-      get().setEditingText(id);
-    }
+    if (!el.label && defs.label) patch.label = defs.label;
+    if (Object.keys(patch).length > 0) get().updateElement(id, patch);
+    if (LABELED_TYPES.includes(el.type)) get().setEditingText(id);
     get().pushHistory();
   },
   addPath: (points) => {

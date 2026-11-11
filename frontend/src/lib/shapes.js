@@ -14,6 +14,16 @@ export const FILL_COLORS = [
 
 export const FONT_SIZES = [12, 14, 16, 20, 24, 32];
 
+export const LABELED_TYPES = ['text', 'sticky', 'rectangle', 'rounded', 'circle', 'cylinder', 'diamond', 'parallelogram', 'cloud', 'hexagon'];
+
+// Snaps an arrow's drag vector to the nearest of 8 directions, keeping its length.
+export const snapToEightWays = (w, h) => {
+  const len = Math.hypot(w, h);
+  const step = Math.PI / 4;
+  const angle = Math.round(Math.atan2(h, w) / step) * step;
+  return [len * Math.cos(angle), len * Math.sin(angle)];
+};
+
 export const SHAPE_DEFAULTS = {
   rectangle: { w: 180, h: 80, label: 'Service' },
   rounded: { w: 180, h: 80, label: 'Component' },

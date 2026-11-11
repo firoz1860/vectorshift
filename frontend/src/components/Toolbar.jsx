@@ -1,12 +1,6 @@
 import { useStore } from '../lib/store';
 import { STROKE_COLORS, FILL_COLORS, FONT_SIZES } from '../lib/shapes';
-import {
-  MousePointer2, Pen, Eraser, Hand, Type, StickyNote,
-  Square, SquareDashed, Circle, Database, Diamond,
-  Cloud, Hexagon, ArrowRight, Slash,
-  Trash2, Save, FilePlus, Layers, Download,
-  Undo2, Redo2, ArrowUp, ArrowDown, ArrowLeft, ArrowRightLeft,
-} from 'lucide-react';
+import { MousePointer2, Pen, Eraser, Hand, Type, StickyNote, Square, SquareDashed, Circle, Database, Diamond, Cloud, Hexagon, ArrowRight, Slash, Trash as Trash2, Save, FilePlus, Layers, Download, Undo2, Redo2, Compass, ArrowRightLeft } from 'lucide-react';
 
 const TOOLS = [
   { tool: 'select', icon: MousePointer2, label: 'Select (V)' },
@@ -29,13 +23,9 @@ const SHAPES = [
   { tool: 'sticky', icon: StickyNote, label: 'Sticky Note' },
 ];
 
-const ARROW_DIRS = [
-  { dir: 'free', icon: ArrowRight, label: 'Free drag (any direction)' },
-  { dir: 'right', icon: ArrowRight, label: 'Right' },
-  { dir: 'left', icon: ArrowLeft, label: 'Left' },
-  { dir: 'up', icon: ArrowUp, label: 'Up' },
-  { dir: 'down', icon: ArrowDown, label: 'Down' },
-  { dir: 'bidirectional', icon: ArrowRightLeft, label: 'Both' },
+const ARROW_OPTIONS = [
+  { key: 'arrowSnap', icon: Compass, label: 'Snap to 8 directions', toggle: 'setArrowSnap' },
+  { key: 'arrowBidirectional', icon: ArrowRightLeft, label: 'Arrowheads at both ends', toggle: 'setArrowBidirectional' },
 ];
 
 export default function Toolbar({ onSave, onNew, onExport }) {
@@ -96,11 +86,11 @@ export default function Toolbar({ onSave, onNew, onExport }) {
         <>
           <div className="toolbar__divider" />
           <div className="toolbar__group">
-            {ARROW_DIRS.map(({ dir, icon: Icon, label }) => (
+            {ARROW_OPTIONS.map(({ key, icon: Icon, label, toggle }) => (
               <button
-                key={dir}
-                className={`tool-btn ${s.arrowDirection === dir ? 'tool-btn--active' : ''}`}
-                onClick={() => s.setArrowDirection(dir)}
+                key={key}
+                className={`tool-btn ${s[key] ? 'tool-btn--active' : ''}`}
+                onClick={() => s[toggle](!s[key])}
                 title={label}
               >
                 <Icon size={16} />

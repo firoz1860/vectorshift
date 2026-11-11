@@ -1,6 +1,8 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useStore } from '../lib/store';
 import { shapePath } from '../lib/svgPaths';
+import { LABELED_TYPES, snapToEightWays } from '../lib/shapes';
+import { fitLabel, innerTextBox, SHAPE_TEXT_PAD, LINE_RATIO } from '../lib/textLayout';
 import { Minus, Plus, Maximize } from 'lucide-react';
 
 const SHAPE_TOOLS = ['rectangle','rounded','circle','cylinder','diamond','parallelogram','cloud','hexagon','arrow','text','sticky'];
@@ -31,7 +33,7 @@ export default function Canvas() {
   const [panState, setPanState] = useState(null);
   const [drawState, setDrawState] = useState(null);
   const [resizeState, setResizeState] = useState(null);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const coordRef = useRef(null);
 
   const s = useStore();
 
@@ -84,7 +86,7 @@ export default function Canvas() {
 
   const handlePointerMove = (e) => {
     const { x, y } = toCanvasCoords(e.clientX, e.clientY);
-    setMousePos({ x, y });
+    if (coordRef.current) coordRef.current.textContent = `${Math.round(x)}, ${Math.round(y)}`;
 
     if (panState) {
       s.setPan({
@@ -107,7 +109,8 @@ export default function Canvas() {
       const w = x - drawState.startX;
       const h = y - drawState.startY;
       if (drawState.tool === 'arrow') {
-        s.resizeShape(drawState.id, drawState.startX, drawState.startY, w, h);
+        const [aw, ah] = s.arrowSnap ? snapToEightWays(w, h) : [w, h];
+        s.resizeShape(drawState.id, drawState.startX, drawState.startY, aw, ah);
       } else if (drawState.tool === 'line') {
         s.resizeShape(drawState.id, drawState.startX, drawState.startY, w, 0);
       } else {
@@ -219,8 +222,7 @@ export default function Canvas() {
 
   const handleShapeDoubleClick = (e, el) => {
     e.stopPropagation();
-    const editable = ['text','sticky','rectangle','rounded','circle','cylinder','diamond','parallelogram','cloud','hexagon'];
-    if (editable.includes(el.type)) {
+    if (LABELED_TYPES.includes(el.type)) {
       s.setEditingText(el.id);
     }
   };
@@ -328,6 +330,25 @@ export default function Canvas() {
     ));
   };
 
+  const renderShapeLabel = (el) => {
+    const box = innerTextBox(el);
+    const { lines, fontSize, lineHeight } = fitLabel(el.label, box.w, box.h, el.fontSize || 14);
+    const centerX = box.x + box.w / 2;
+    const firstBaseline = el.y + el.h / 2 - ((lines.length - 1) * lineHeight) / 2 + fontSize * 0.35;
+    return (
+      <>
+        <clipPath id={`clip-${el.id}`}>
+          <rect x={box.x} y={box.y} width={box.w} height={box.h} />
+        </clipPath>
+        <text clipPath={`url(#clip-${el.id})`} textAnchor="middle" fill={el.stroke} fontSize={fontSize} fontFamily="Inter, sans-serif" style={{ userSelect: 'none' }}>
+          {lines.map((line, i) => (
+            <tspan key={i} x={centerX} y={firstBaseline + i * lineHeight}>{line}</tspan>
+          ))}
+        </text>
+      </>
+    );
+  };
+
   const renderShape = (el) => {
     if (el.type === 'pen') {
       return (
@@ -341,7 +362,6 @@ export default function Canvas() {
           strokeLinecap="round"
           strokeLinejoin="round"
           onPointerDown={(e) => handleShapePointerDown(e, el)}
-          style={s.selectedId === el.id ? { filter: 'drop-shadow(0 0 4px rgba(59,130,246,.5))' } : {}}
         />
       );
     }
@@ -375,7 +395,6 @@ export default function Canvas() {
         data-element-id={el.id}
         onPointerDown={(e) => handleShapePointerDown(e, el)}
         onDoubleClick={(e) => handleShapeDoubleClick(e, el)}
-        style={s.selectedId === el.id ? { filter: 'drop-shadow(0 0 3px rgba(59,130,246,.3))' } : {}}
       >
         {el.type !== 'text' && el.type !== 'arrow' && el.type !== 'line' && (
           <rect x={el.x - 4} y={el.y - 4} width={el.w + 8} height={el.h + 8} fill="transparent" />
@@ -391,11 +410,7 @@ export default function Canvas() {
         ) : (
           <>
             <path d={path} stroke={el.stroke} strokeWidth={el.strokeWidth} fill={el.fill} strokeLinejoin="round" strokeLinecap="round" />
-            {el.label && (
-              <text x={el.x + el.w / 2} y={el.y + el.h / 2 + (el.fontSize || 14) / 3} textAnchor="middle" fill={el.stroke} fontSize={el.fontSize || 14} fontFamily="Inter, sans-serif" style={{ userSelect: 'none' }}>
-                {el.label}
-              </text>
-            )}
+            {el.label && s.editingTextId !== el.id && renderShapeLabel(el)}
           </>
         )}
 
@@ -414,24 +429,35 @@ export default function Canvas() {
     if (!s.editingTextId) return null;
     const el = s.elements.find((e) => e.id === s.editingTextId);
     if (!el) return null;
+    const isTextLine = el.type === 'text';
+    const frame = isTextLine
+      ? { x: el.x, y: el.y, w: Math.max(el.w || 120, 100), h: Math.max(el.h || 24, (el.fontSize || 14) + 8) }
+      : { x: el.x, y: el.y, w: el.w, h: el.h };
+    const inner = innerTextBox(el);
+    const fit = isTextLine ? null : fitLabel(el.label || '', inner.w, inner.h, el.fontSize || 14);
+    const fontSize = fit ? fit.fontSize : el.fontSize || 14;
+    const textHeight = fit ? Math.min(inner.h, fit.lines.length * fit.lineHeight + 6) : '100%';
     return (
-      <foreignObject x={el.x} y={el.y} width={Math.max(el.w || 120, 100)} height={Math.max(el.h || 24, (el.fontSize || 14) + 8)}>
-        <textarea
-          autoFocus
-          value={el.label}
-          onChange={(e) => s.updateElement(el.id, { label: e.target.value })}
-          onBlur={() => { s.commitEdit(); s.setEditingText(null); }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); s.commitEdit(); s.setEditingText(null); }
-          }}
-          style={{
-            width: '100%', height: '100%', border: '1px solid #3b82f6', borderRadius: '4px',
-            padding: '4px', fontSize: el.fontSize || 14, fontFamily: 'Inter, sans-serif',
-            background: el.fill === 'transparent' || el.fill === '#1e293b' ? '#fff' : el.fill,
-            color: el.type === 'text' ? '#1e293b' : el.stroke, outline: 'none', resize: 'none',
-            textAlign: el.type === 'text' ? 'left' : 'center',
-          }}
-        />
+      <foreignObject x={frame.x} y={frame.y} width={frame.w} height={frame.h}>
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', padding: isTextLine ? 0 : SHAPE_TEXT_PAD }}>
+          <textarea
+            autoFocus
+            value={el.label}
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => s.updateElement(el.id, { label: e.target.value })}
+            onBlur={() => { s.commitEdit(); s.setEditingText(null); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); s.commitEdit(); s.setEditingText(null); }
+            }}
+            style={{
+              width: '100%', height: textHeight, border: '1px solid #3b82f6', borderRadius: '4px',
+              padding: isTextLine ? '4px' : 0, fontSize, lineHeight: LINE_RATIO, fontFamily: 'Inter, sans-serif',
+              background: el.fill === 'transparent' || el.fill === '#1e293b' ? '#fff' : el.fill,
+              color: isTextLine ? '#1e293b' : el.stroke, outline: 'none', resize: 'none', overflow: 'hidden',
+              textAlign: isTextLine ? 'left' : 'center',
+            }}
+          />
+        </div>
       </foreignObject>
     );
   };
@@ -477,7 +503,7 @@ export default function Canvas() {
         <button className="zoom-btn" onClick={s.resetView} title="Reset view"><Maximize size={14} /></button>
       </div>
 
-      <div className="coord-display">{Math.round(mousePos.x)}, {Math.round(mousePos.y)}</div>
+      <div className="coord-display" ref={coordRef}>0, 0</div>
     </div>
   );
 }

@@ -36,48 +36,27 @@ export const shapePath = (type, x, y, w, h, direction) => {
     }
 
     case 'arrow': {
-      const dir = direction || 'right';
-      const head = 12;
-      if (dir === 'free' || dir === 'free-bi') {
-        const ex = x + w;
-        const ey = y + h;
-        const len = Math.hypot(w, h);
-        if (len < 1) return '';
-        const angle = Math.atan2(h, w);
-        const headLen = Math.min(14, len * 0.25);
-        const headW = headLen * 0.5;
-        const cosA = Math.cos(angle);
-        const sinA = Math.sin(angle);
-        const baseX = ex - headLen * cosA;
-        const baseY = ey - headLen * sinA;
-        const w1X = baseX + headW * sinA;
-        const w1Y = baseY - headW * cosA;
-        const w2X = baseX - headW * sinA;
-        const w2Y = baseY + headW * cosA;
-        let path = `M ${x} ${y} L ${baseX} ${baseY} M ${w1X} ${w1Y} L ${ex} ${ey} L ${w2X} ${w2Y}`;
-        if (dir === 'free-bi') {
-          const sBaseX = x + headLen * cosA;
-          const sBaseY = y + headLen * sinA;
-          const sW1X = sBaseX + headW * sinA;
-          const sW1Y = sBaseY - headW * cosA;
-          const sW2X = sBaseX - headW * sinA;
-          const sW2Y = sBaseY + headW * cosA;
-          path += ` M ${sW1X} ${sW1Y} L ${x} ${y} L ${sW2X} ${sW2Y}`;
-        }
-        return path;
+      const ex = x + w;
+      const ey = y + h;
+      const len = Math.hypot(w, h);
+      if (len < 1) return '';
+      const cosA = w / len;
+      const sinA = h / len;
+      const headLen = Math.min(14, len * 0.25);
+      const headW = headLen * 0.5;
+      const baseX = ex - headLen * cosA;
+      const baseY = ey - headLen * sinA;
+      let path = `M ${x} ${y} L ${baseX} ${baseY} M ${baseX + headW * sinA} ${baseY - headW * cosA} L ${ex} ${ey} L ${baseX - headW * sinA} ${baseY + headW * cosA}`;
+      if (direction === 'free-bi') {
+        const sBaseX = x + headLen * cosA;
+        const sBaseY = y + headLen * sinA;
+        path += ` M ${sBaseX + headW * sinA} ${sBaseY - headW * cosA} L ${x} ${y} L ${sBaseX - headW * sinA} ${sBaseY + headW * cosA}`;
       }
-      if (dir === 'right')
-        return `M ${x} ${y} L ${x + w - head} ${y} M ${x + w - head} ${y - 6} L ${x + w} ${y} L ${x + w - head} ${y + 6}`;
-      if (dir === 'left')
-        return `M ${x + w} ${y} L ${x + head} ${y} M ${x + head} ${y - 6} L ${x} ${y} L ${x + head} ${y + 6}`;
-      if (dir === 'up')
-        return `M ${x} ${y + h} L ${x} ${y + head} M ${x - 6} ${y + head} L ${x} ${y} L ${x + 6} ${y + head}`;
-      if (dir === 'down')
-        return `M ${x} ${y} L ${x} ${y + h - head} M ${x - 6} ${y + h - head} L ${x} ${y + h} L ${x + 6} ${y + h - head}`;
-      if (dir === 'bidirectional')
-        return `M ${x + 12} ${y - 6} L ${x} ${y} L ${x + 12} ${y + 6} M ${x + w - 12} ${y - 6} L ${x + w} ${y} L ${x + w - 12} ${y + 6} M ${x} ${y} L ${x + w} ${y}`;
-      return `M ${x} ${y} L ${x + w - head} ${y} M ${x + w - head} ${y - 6} L ${x + w} ${y} L ${x + w - head} ${y + 6}`;
+      return path;
     }
+
+    case 'sticky':
+      return `M ${x} ${y} L ${x + w} ${y} L ${x + w} ${y + h} L ${x} ${y + h} Z`;
 
     case 'line':
       return `M ${x} ${y} L ${x + w} ${y}`;
