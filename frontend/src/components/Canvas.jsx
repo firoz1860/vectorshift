@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { useStore } from '../lib/store';
 import { shapePath } from '../lib/svgPaths';
 import { LABELED_TYPES, snapToEightWays } from '../lib/shapes';
-import { fitLabel, innerTextBox, SHAPE_TEXT_PAD, LINE_RATIO } from '../lib/textLayout';
+import { fitLabel, innerTextBox, measureText, SHAPE_TEXT_PAD, LINE_RATIO } from '../lib/textLayout';
 import { Minus, Plus, Maximize } from 'lucide-react';
 
 const SHAPE_TOOLS = ['rectangle','rounded','circle','cylinder','diamond','parallelogram','cloud','hexagon','arrow','text','sticky'];
@@ -36,6 +36,11 @@ export default function Canvas() {
   const coordRef = useRef(null);
 
   const s = useStore();
+
+  // While a drawing/placement tool is active, existing elements must not
+  // capture the pointer, so a new shape, stroke or text can begin anywhere —
+  // including directly on top of another element, across the whole canvas.
+  const drawingToolActive = s.tool === 'pen' || SHAPE_TOOLS.includes(s.tool);
 
   const toCanvasCoords = useCallback((clientX, clientY) => {
     const rect = svgRef.current.getBoundingClientRect();
@@ -191,17 +196,18 @@ export default function Canvas() {
   };
 
   const handleShapePointerDown = (e, el) => {
+    // With a drawing/placement tool active, don't swallow the event: let it
+    // bubble to the canvas so a new shape or stroke can start on top of this one.
+    if (s.tool !== 'select' && s.tool !== 'pan' && s.tool !== 'eraser') return;
     e.stopPropagation();
     if (s.tool === 'eraser') {
       s.deleteElement(el.id);
       return;
     }
-    if (s.tool === 'select' || s.tool === 'pan') {
-      const { x, y } = toCanvasCoords(e.clientX, e.clientY);
-      s.selectElement(el.id);
-      if (el.type !== 'pen' && el.type !== 'connection') {
-        setDragState({ id: el.id, startX: x, startY: y, origX: el.x, origY: el.y });
-      }
+    const { x, y } = toCanvasCoords(e.clientX, e.clientY);
+    s.selectElement(el.id);
+    if (el.type !== 'pen' && el.type !== 'connection') {
+      setDragState({ id: el.id, startX: x, startY: y, origX: el.x, origY: el.y });
     }
   };
 
@@ -225,6 +231,16 @@ export default function Canvas() {
     if (LABELED_TYPES.includes(el.type)) {
       s.setEditingText(el.id);
     }
+  };
+
+  // Double-clicking empty canvas drops a text box at the cursor so you can type
+  // anywhere without first choosing the text tool.
+  const handleCanvasDoubleClick = (e) => {
+    const onBackground = e.target.tagName === 'svg' || e.target.getAttribute('data-bg') === 'true';
+    if (!onBackground) return;
+    if (s.tool !== 'select' && s.tool !== 'pan') return;
+    const { x, y } = toCanvasCoords(e.clientX, e.clientY);
+    s.addText(x, y);
   };
 
   // Native listener with { passive: false }: React's onWheel is passive, so
@@ -258,6 +274,14 @@ export default function Canvas() {
       s.selectElement(null);
       s.setEditingText(null);
       s.setTool('select');
+    }
+    // Enter / F2 starts typing into the selected shape straight from the keyboard.
+    if ((e.key === 'Enter' || e.key === 'F2') && s.selectedId && !s.editingTextId) {
+      const el = s.elements.find((el) => el.id === s.selectedId);
+      if (el && LABELED_TYPES.includes(el.type)) {
+        e.preventDefault();
+        s.setEditingText(s.selectedId);
+      }
     }
     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
       e.preventDefault();
@@ -361,6 +385,7 @@ export default function Canvas() {
           fill="none"
           strokeLinecap="round"
           strokeLinejoin="round"
+          style={{ pointerEvents: drawingToolActive ? 'none' : 'auto' }}
           onPointerDown={(e) => handleShapePointerDown(e, el)}
         />
       );
@@ -377,7 +402,7 @@ export default function Canvas() {
       const mx = (x1 + x2) / 2;
       const d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
       return (
-        <g key={el.id} data-element-id={el.id}>
+        <g key={el.id} data-element-id={el.id} style={{ pointerEvents: drawingToolActive ? 'none' : 'auto' }}>
           <path d={d} stroke={el.stroke} strokeWidth={el.strokeWidth} fill="none" markerEnd="url(#arrowhead)" onPointerDown={(e) => handleShapePointerDown(e, el)} />
           {el.label && (
             <text x={mx} y={(y1 + y2) / 2 - 6} textAnchor="middle" fontSize={12} fill="#64748b" style={{ userSelect: 'none' }}>{el.label}</text>
@@ -393,6 +418,7 @@ export default function Canvas() {
       <g
         key={el.id}
         data-element-id={el.id}
+        style={{ pointerEvents: drawingToolActive ? 'none' : 'auto' }}
         onPointerDown={(e) => handleShapePointerDown(e, el)}
         onDoubleClick={(e) => handleShapeDoubleClick(e, el)}
       >
@@ -404,9 +430,24 @@ export default function Canvas() {
         )}
 
         {isTextType ? (
-          <text x={el.x} y={el.y + el.fontSize} fill={el.fill} fontSize={el.fontSize} fontFamily="Inter, sans-serif" style={{ userSelect: 'none' }}>
-            {el.label}
-          </text>
+          (() => {
+            const fs = el.fontSize || 16;
+            const m = measureText(el.label, fs);
+            const boxW = Math.max(el.w || 0, m.w);
+            const boxH = Math.max(el.h || 0, m.h);
+            return (
+              <>
+                <rect x={el.x} y={el.y} width={boxW} height={boxH} fill="transparent" />
+                {s.editingTextId !== el.id && (
+                  <text x={el.x} fill={el.fill} fontSize={fs} fontFamily="Inter, sans-serif" style={{ userSelect: 'none', whiteSpace: 'pre' }}>
+                    {m.lines.map((line, i) => (
+                      <tspan key={i} x={el.x} y={el.y + fs + i * m.lineHeight}>{line === '' ? ' ' : line}</tspan>
+                    ))}
+                  </text>
+                )}
+              </>
+            );
+          })()
         ) : (
           <>
             <path d={path} stroke={el.stroke} strokeWidth={el.strokeWidth} fill={el.fill} strokeLinejoin="round" strokeLinecap="round" />
@@ -430,31 +471,43 @@ export default function Canvas() {
     const el = s.elements.find((e) => e.id === s.editingTextId);
     if (!el) return null;
     const isTextLine = el.type === 'text';
+    const textFs = el.fontSize || 16;
+    const tm = isTextLine ? measureText(el.label || '', textFs) : null;
     const frame = isTextLine
-      ? { x: el.x, y: el.y, w: Math.max(el.w || 120, 100), h: Math.max(el.h || 24, (el.fontSize || 14) + 8) }
+      ? { x: el.x, y: el.y, w: Math.max(el.w || 0, tm.w) + 20, h: tm.h + 10 }
       : { x: el.x, y: el.y, w: el.w, h: el.h };
     const inner = innerTextBox(el);
     const fit = isTextLine ? null : fitLabel(el.label || '', inner.w, inner.h, el.fontSize || 14);
-    const fontSize = fit ? fit.fontSize : el.fontSize || 14;
+    const fontSize = isTextLine ? textFs : fit.fontSize;
     const textHeight = fit ? Math.min(inner.h, fit.lines.length * fit.lineHeight + 6) : '100%';
     return (
       <foreignObject x={frame.x} y={frame.y} width={frame.w} height={frame.h}>
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', padding: isTextLine ? 0 : SHAPE_TEXT_PAD }}>
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: isTextLine ? 'flex-start' : 'center', padding: isTextLine ? 0 : SHAPE_TEXT_PAD }}>
           <textarea
             autoFocus
             value={el.label}
             onFocus={(e) => e.target.select()}
-            onChange={(e) => s.updateElement(el.id, { label: e.target.value })}
+            onChange={(e) => {
+              if (isTextLine) {
+                const m = measureText(e.target.value, textFs);
+                s.updateElement(el.id, { label: e.target.value, w: m.w, h: m.h });
+              } else {
+                s.updateElement(el.id, { label: e.target.value });
+              }
+            }}
             onBlur={() => { s.commitEdit(); s.setEditingText(null); }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); s.commitEdit(); s.setEditingText(null); }
+              if (e.key === 'Escape') { e.preventDefault(); s.commitEdit(); s.setEditingText(null); }
+              // Shapes commit on Enter (Shift+Enter = newline); free text keeps
+              // Enter as a line break so you can write paragraphs anywhere.
+              else if (!isTextLine && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); s.commitEdit(); s.setEditingText(null); }
             }}
             style={{
-              width: '100%', height: textHeight, border: '1px solid #3b82f6', borderRadius: '4px',
-              padding: isTextLine ? '4px' : 0, fontSize, lineHeight: LINE_RATIO, fontFamily: 'Inter, sans-serif',
-              background: el.fill === 'transparent' || el.fill === '#1e293b' ? '#fff' : el.fill,
-              color: isTextLine ? '#1e293b' : el.stroke, outline: 'none', resize: 'none', overflow: 'hidden',
-              textAlign: isTextLine ? 'left' : 'center',
+              width: '100%', height: isTextLine ? '100%' : textHeight, border: '1px solid #3b82f6', borderRadius: '4px',
+              padding: isTextLine ? '2px 4px' : 0, fontSize, lineHeight: LINE_RATIO, fontFamily: 'Inter, sans-serif',
+              background: isTextLine ? 'rgba(255,255,255,0.85)' : (el.fill === 'transparent' || el.fill === '#1e293b' ? '#fff' : el.fill),
+              color: isTextLine ? el.fill : el.stroke, outline: 'none', resize: 'none', overflow: 'hidden',
+              textAlign: isTextLine ? 'left' : 'center', boxSizing: 'border-box',
             }}
           />
         </div>
@@ -471,6 +524,7 @@ export default function Canvas() {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
+        onDoubleClick={handleCanvasDoubleClick}
         style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }}
       >
         <defs>
@@ -481,7 +535,7 @@ export default function Canvas() {
 
         <g data-bg="true">
           <rect data-bg="true" x={-10000} y={-10000} width={20000} height={20000} fill="transparent" />
-          <pattern data-bg="true" id="dot-grid" width={20 * s.zoom} height={20 * s.zoom} patternUnits="userSpaceOnUse">
+          <pattern data-bg="true" id="dot-grid" width={20 * s.zoom} height={20 * s.zoom} patternUnits="userSpaceOnUse" patternTransform={`translate(${s.pan.x} ${s.pan.y})`}>
             <circle data-bg="true" cx={10 * s.zoom} cy={10 * s.zoom} r={1 * s.zoom} fill="#cbd5e1" />
           </pattern>
           <rect data-bg="true" x={-10000} y={-10000} width={20000} height={20000} fill="url(#dot-grid)" />

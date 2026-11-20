@@ -81,7 +81,9 @@ export const useStore = create((set, get) => ({
     const isArrow = type === 'arrow';
     const el = createShape(type, x, y, {
       stroke: get().strokeColor,
-      fill: get().fillColor,
+      // For a text element, `fill` is the ink colour, so follow the stroke
+      // swatch — using the shape fill (white by default) renders it invisible.
+      fill: type === 'text' ? get().strokeColor : get().fillColor,
       fontSize: get().fontSize,
       w: 0,
       h: 0,
@@ -89,6 +91,26 @@ export const useStore = create((set, get) => ({
       ...(isArrow ? { direction: get().arrowBidirectional ? 'free-bi' : 'free' } : {}),
     });
     set((s) => ({ elements: [...s.elements, el], selectedId: el.id, boardModified: true }));
+    return el;
+  },
+  // Drops a free-text element at an arbitrary canvas point and opens it for
+  // editing, so text can be written anywhere without picking a tool first.
+  addText: (x, y) => {
+    const el = createShape('text', x, y, {
+      stroke: get().strokeColor,
+      fill: get().strokeColor,
+      fontSize: get().fontSize,
+      w: 160,
+      h: Math.round((get().fontSize || 16) * 1.25),
+      label: '',
+    });
+    set((s) => ({
+      elements: [...s.elements, el],
+      selectedId: el.id,
+      editingTextId: el.id,
+      tool: 'select',
+      boardModified: true,
+    }));
     return el;
   },
   resizeShape: (id, x, y, w, h) =>

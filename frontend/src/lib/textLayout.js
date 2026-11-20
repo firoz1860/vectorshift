@@ -44,6 +44,21 @@ export function innerTextBox(el) {
   };
 }
 
+// Measures a free-text block (honouring the user's own line breaks) and returns
+// the lines plus the pixel size they occupy, so a text element can grow to fit
+// whatever the keyboard produces.
+export function measureText(text, fontSize) {
+  const lines = String(text === undefined || text === null ? '' : text).split('\n');
+  const longest = lines.reduce((m, l) => Math.max(m, l.length), 0);
+  const lineHeight = fontSize * LINE_RATIO;
+  return {
+    lines,
+    lineHeight,
+    w: Math.max(fontSize, Math.ceil(longest * fontSize * CHAR_RATIO)),
+    h: Math.max(lineHeight, lines.length * lineHeight),
+  };
+}
+
 // Wraps text to the box width and shrinks the font until it fits the box height.
 export function fitLabel(text, width, height, fontSize) {
   let size = fontSize;
