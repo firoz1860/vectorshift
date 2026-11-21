@@ -60,6 +60,12 @@ db.sqlite3
 instance/
 .webassets-cache
 
+# Local SQLite board database
+data/
+*.db
+*.sqlite
+*.sqlite3
+
 # Scrapy stuff:
 .scrapy
 

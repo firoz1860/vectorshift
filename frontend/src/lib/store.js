@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import { supabase, supabaseConfigured } from './supabase';
-import { createShape, createPath, createConnection, SHAPE_DEFAULTS, LABELED_TYPES } from './shapes';
+import * as api from './api';
+import { createShape, createPath, createConnection, SHAPE_DEFAULTS } from './shapes';
 
 const MAX_HISTORY = 50;
 
@@ -139,7 +140,10 @@ export const useStore = create((set, get) => ({
     }
     if (!el.label && defs.label) patch.label = defs.label;
     if (Object.keys(patch).length > 0) get().updateElement(id, patch);
-    if (LABELED_TYPES.includes(el.type)) get().setEditingText(id);
+    // Only the text tool jumps straight into typing; geometric shapes stay
+    // uninterrupted so the tool can keep drawing. Add labels later via
+    // double-click or Enter/F2.
+    if (el.type === 'text') get().setEditingText(id);
     get().pushHistory();
   },
   addPath: (points) => {
@@ -182,11 +186,18 @@ export const useStore = create((set, get) => ({
   toggleTemplates: () => set((s) => ({ showTemplates: !s.showTemplates })),
 
   loadBoards: async () => {
+    set({ loadingBoards: true });
     if (!supabaseConfigured || !supabase) {
-      set({ boards: [], loadingBoards: false });
+      // Backend persistence (default when Supabase isn't configured).
+      const { data, error } = await api.listBoards();
+      if (error) {
+        console.error('Failed to load boards:', error);
+        set({ loadingBoards: false });
+        return;
+      }
+      set({ boards: data || [], loadingBoards: false });
       return;
     }
-    set({ loadingBoards: true });
     const { data, error } = await supabase
       .from('boards')
       .select('id, title, thumbnail, category, created_at, updated_at')
@@ -200,11 +211,25 @@ export const useStore = create((set, get) => ({
   },
 
   saveBoard: async (title, category = 'Custom', thumbnail = null) => {
-    if (!supabaseConfigured || !supabase) {
-      return { error: new Error('Board saving is not configured for this deployment.') };
-    }
     const { elements, currentBoardId } = get();
     const payload = { title, category, canvas_data: { elements }, ...(thumbnail ? { thumbnail } : {}) };
+
+    if (!supabaseConfigured || !supabase) {
+      // Backend persistence: update the existing board, or create a new one.
+      const { data, error } = currentBoardId
+        ? await api.updateBoard(currentBoardId, payload)
+        : await api.createBoard(payload);
+      if (error) return { error };
+      set((s) => ({
+        boards: currentBoardId
+          ? s.boards.map((b) => (b.id === data.id ? data : b))
+          : [data, ...s.boards],
+        currentBoardId: data.id,
+        currentBoardTitle: title,
+        boardModified: false,
+      }));
+      return { data };
+    }
 
     if (currentBoardId) {
       const { data, error } = await supabase
@@ -238,15 +263,20 @@ export const useStore = create((set, get) => ({
   },
 
   loadBoard: async (id) => {
+    let data;
     if (!supabaseConfigured || !supabase) {
-      return { error: new Error('Board loading is not configured for this deployment.') };
+      const res = await api.getBoard(id);
+      if (res.error) return { error: res.error };
+      data = res.data;
+    } else {
+      const res = await supabase
+        .from('boards')
+        .select('id, title, canvas_data, category')
+        .eq('id', id)
+        .single();
+      if (res.error) return { error: res.error };
+      data = res.data;
     }
-    const { data, error } = await supabase
-      .from('boards')
-      .select('id, title, canvas_data, category')
-      .eq('id', id)
-      .single();
-    if (error) return { error };
     const els = data.canvas_data?.elements || [];
     set({
       elements: els,
@@ -262,10 +292,9 @@ export const useStore = create((set, get) => ({
   },
 
   deleteBoard: async (id) => {
-    if (!supabaseConfigured || !supabase) {
-      return { error: new Error('Board deletion is not configured for this deployment.') };
-    }
-    const { error } = await supabase.from('boards').delete().eq('id', id);
+    const { error } = !supabaseConfigured || !supabase
+      ? await api.deleteBoard(id)
+      : await supabase.from('boards').delete().eq('id', id);
     if (error) return { error };
     set((s) => ({
       boards: s.boards.filter((b) => b.id !== id),

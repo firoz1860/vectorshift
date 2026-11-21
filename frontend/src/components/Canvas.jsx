@@ -183,7 +183,8 @@ export default function Canvas() {
     if (drawState) {
       s.finishShape(drawState.id);
       setDrawState(null);
-      s.setTool('select');
+      // Keep the shape tool active so multiple shapes can be drawn in a row.
+      // The tool only changes when the user picks another one or presses Escape.
     }
     if (dragState) {
       s.commitEdit();

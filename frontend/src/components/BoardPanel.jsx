@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
-import { supabaseConfigured } from '../lib/supabase';
 import { FolderOpen, Trash2, Clock, Plus, Search } from 'lucide-react';
 
 export default function BoardPanel() {
@@ -46,12 +45,6 @@ export default function BoardPanel() {
           <Plus size={16} />
         </button>
       </div>
-
-      {!supabaseConfigured && (
-        <div style={{ margin: '0 12px 8px', padding: '8px 10px', borderRadius: 8, background: '#fef3c7', color: '#92400e', fontSize: 12, lineHeight: 1.4 }}>
-          Saving is disabled: set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY and redeploy.
-        </div>
-      )}
 
       <div className="board-panel__search">
         <Search size={14} className="board-panel__search-icon" />
