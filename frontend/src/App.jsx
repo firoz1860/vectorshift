@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Canvas from './components/Canvas';
 import Toolbar from './components/Toolbar';
+import SelectionToolbar from './components/SelectionToolbar';
 import BoardPanel from './components/BoardPanel';
 import TemplatesModal from './components/TemplatesModal';
 import SaveDialog from './components/SaveDialog';
@@ -66,6 +67,7 @@ function App() {
         )}
 
         <div className="app__canvas">
+          <SelectionToolbar />
           <Canvas />
           {s.currentBoardTitle && (
             <div className="board-indicator">

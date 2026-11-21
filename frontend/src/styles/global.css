@@ -358,3 +358,27 @@ body {
   .action-btn { padding: 7px 8px; }
   .board-indicator { max-width: 200px; font-size: 11px; }
 }
+
+/* Selection / alignment toolbar */
+.selection-toolbar {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 2px; flex-wrap: wrap; max-width: calc(100% - 24px);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-md);
+  padding: 4px 6px; z-index: 30;
+}
+.sel-count { font-size: 11px; color: var(--text-muted, #64748b); padding: 0 6px; white-space: nowrap; }
+.sel-sep { width: 1px; align-self: stretch; margin: 2px 4px; background: var(--border); }
+.sel-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border: none; border-radius: 6px;
+  background: transparent; color: var(--text, #1e293b); cursor: pointer;
+}
+.sel-btn:hover:not(:disabled) { background: var(--bg-canvas, #f1f5f9); }
+.sel-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+@media (max-width: 640px) {
+  .selection-toolbar { gap: 0; padding: 3px; }
+  .sel-btn { width: 28px; height: 28px; }
+  .sel-count { display: none; }
+}
